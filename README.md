@@ -1,69 +1,64 @@
 # csprng
 
-Cryptographic-quality entropy extractor from video frames (LSB-based).
+Cryptographic-quality entropy extractor from video frames (LSB-based) with a **zero-dependency, fully testable core**.
 
-## Project
+## Qué hace
 
-**csprng** is a small utility that extracts entropy from live camera frames and derives a 256-bit key by hashing least-significant-bits (LSBs) from a region of interest (ROI). It's intended as an experimental proof-of-concept for deriving keys from physical video noise.
+Extrae entropía de los *least significant bits* de una región de interés (ROI) de frames de video y deriva una clave de 256 bit hasheando con SHA-256.
 
-## Requirements
+## Estado del revival (2026-10)
 
-- **Python**: 3.8+
-- **Packages**: OpenCV, NumPy
+- **🔓 Core separado de OpenCV**: la lógica de entropía (`extract_lsb_bits`, `bits_to_sha256`, `bit_entropy`) opera sobre *cualquier* secuencia de enteros de 8 bit → los tests corren **sin cámara, sin NumPy, sin OpenCV**.
+- **💉 Inyección de dependencias**: `generate_key_from_frame(..., to_gray=...)` permite testear el pipeline completo sin cv2.
+- **🧪 15 tests** (stdlib `unittest`, cero dependencias) + self-test de entropía sin cámara.
+- **🧠 Métrica de entropía de Shannon por bit** incluida (~0 = sesgado, ~1 = aleatorio).
+- **🔀 Derivación multi-frame**: `derive_key_from_many_frames()` mezcla entropía de N frames (más robusto que single-frame).
+- **📦 Licencia MIT** y CLI (`--self-test` / `--camera`).
 
-Install with pip (recommended) or via conda:
+> El self-test usa `secrets.token_bytes` del OS como referencia de alta entropía: verificá que la métrica dé ~1.0 antes de confiar en una fuente física.
 
-```bash
-pip install opencv-python numpy
-```
+## Requisitos
 
-Or with conda:
+- **Core + tests**: Python 3.8+, **cero dependencias**.
+- **Modo cámara**: `opencv-python` (`pip install opencv-python`). NumPy se instala como dependencia de OpenCV.
 
-```bash
-conda install -c conda-forge opencv numpy
-```
-
-## Quick Start
-
-Run the example script which captures frames from the default camera and prints derived keys:
+## Uso
 
 ```bash
-python csprng.py
+python csprng.py --self-test        # métricas de entropía, sin cámara
+python csprng.py --camera           # demo con la cámara (Ctrl+C para parar)
 ```
 
-Press Ctrl+C to stop the script.
+Uso programático:
 
-## How it works
+```python
+from csprng import generate_key_from_frame, derive_key_from_many_frames
 
-- Capture a frame from the camera.
-- Extract a rectangular Region Of Interest (ROI).
-- Convert ROI to grayscale and take the least-significant bit (LSB) plane.
-- Flatten LSBs into a bit string and hash the first N bits (default 256) with SHA-256.
-- The SHA-256 hex digest is returned as the derived 256-bit key.
+# Un frame
+key = generate_key_from_frame(frame, roi_coords=(0, 0, 320, 240), block_size=256)
 
-## Usage (API)
+# O más robusto: mezclando N frames
+key, bits = derive_key_from_many_frames(frames, (0, 0, 320, 240), frame_count=8)
+```
 
-- `generate_key_from_frame(frame, roi_coords, block_size=256)`
-	- `frame` — a NumPy array (BGR image) as returned by OpenCV.
-	- `roi_coords` — tuple `(x, y, w, h)` defining the ROI rectangle.
-	- `block_size` — number of raw bits to collect before hashing (default 256).
-	- Returns: 64-character hex string (SHA-256) or `None` on error/insufficient entropy.
+## Tests
 
-The example runner in `csprng.py` opens the default camera (index 0), uses ROI `(0, 0, 320, 240)`, and prints generated keys to stdout.
+```bash
+python -m unittest discover -s tests -v
+```
 
-See the implementation: [csprng.py](csprng.py#L1-L200)
+Cubren: extracción de LSBs, conteo insuficiente, derivación SHA-256 determinista, métrica de entropía (constante → 0, alternante → 1), validación de frames inválidos y ROI negativo, inyección de `to_gray`.
 
-## Notes & Limitations
+## ⚠️ Limitaciones honestas
 
-- This is experimental and should NOT be used as a drop-in replacement for production-grade CSPRNGs.
-- Entropy quality depends heavily on camera noise, lighting, and ROI selection.
-- The current method naively uses LSBs and a single-frame hash; for real-world use combine multiple frames and perform stronger entropy assessments.
+- El LSB de frames de webcam **puede tener baja entropía real**: muchos sensores aplican corrección de píxeles, compresión o quemado de patrón fijo. Medí antes de confiar (`bit_entropy`).
+- Single-frame + hash directo es un PoC. Para uso real: multi-frame, tests formales de aleatoriedad (NIST SP 800-22) y health checks continuos.
+- **No reemplaza** al CSPRNG del sistema (`secrets`, `os.urandom`) — es un experimento didáctico.
 
-## Contributing
+## Licencia
 
-Suggestions, bug reports, and improvements are welcome. Open an issue or send a patch.
+MIT — ver [LICENSE](LICENSE).
 
-## License
+## Autor
 
-No license provided. Add a LICENSE file to make terms explicit.
-
+[FernandoMay](https://github.com/FernandoMay)
